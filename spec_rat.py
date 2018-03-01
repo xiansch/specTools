@@ -20,12 +20,16 @@ from obspy.signal.util import smooth
 from obspy.geodetics.base import gps2dist_azimuth
 
 class specrat(object):
-	def __init__(self, freqs,specratio, snr,master, mla,mlo,egf, station, stla,stlo,channel):
+	def __init__(self,freqs,specratio,snr,master,mla,mlo,egf,ela,elo,station,stla,stlo,channel):
 		self.master=master
 		self.egf=egf
 		self.station=station
 		self.stla=stla
 		self.stlo=stlo
+		self.mla=mla
+		self.mlo=mlo
+		self.ela=ela
+		self.elo=elo
 		self.channel=channel
 		self.specratio=specratio
 		self.freqs=freqs
@@ -115,11 +119,15 @@ def spectrum_gen(timeseries, picksfile, station, args, mt_tb=4, debug=False):
 		specs=np.sqrt(specs)
 	else:
 		specs=[]
+		ffreq=[]
 		lenwin=0
 		for i in range(1,nwins+1):
 			clipwin=timeseries.copy()
 			clipstart=pick+(i-1)*shift
 			clipend=clipstart+winlength
+			if clipwin.stats.endtime-clipend < 0:
+				print('at the end of the data')
+				continue
 			clipwin.trim(clipstart,clipend)
 			if fftype=='simple':
 				spec=rfft(clipwin.data)
@@ -141,8 +149,12 @@ def spectrum_gen(timeseries, picksfile, station, args, mt_tb=4, debug=False):
 				spec,freq,jackknife,_,_=mtspec(data=clipwin.data, delta=clipwin.stats.delta, time_bandwidth=mt_tb,nfft=nopts,statistics=True)
 				specs.append(np.sqrt(spec))
 				ffreq=freq
+		print('len specs is ' + str(len(specs)))
 		specs=np.average(specs,axis=0)
+	print('len ffreq is ' + str(len(ffreq)))
 	#smooth the individual spectra before taking spectral ratio.
+	if len(ffreq)==0:
+		return np.asarray([]), np.asarray([])
 	ffreq,specs=logbin(ffreq,specs,nbins=nlogbins,flims=flims)
 	if args.sm:
 		specs=smooth(specs,smoothfactor)	
@@ -155,24 +167,52 @@ def spectrum_gen(timeseries, picksfile, station, args, mt_tb=4, debug=False):
 	return ffreq, specs	
 
 def specrat_fit(freqs,domega,fcs,fcl,gamma=1,n=2):
-	return np.log10(domega)+np.multiply(1/gamma,np.log10(1+np.power(np.divide(freqs,fcs),n*gamma)))-np.multiply(1/gamma,np.log10(1+np.power(np.divide(freqs,fcl),n*gamma)))
+#	print('len frewqs: ' + str(len(freqs)))
+#	print('domega:')
+#	print(domega)
+#	print('fcs:')
+#	print(fcs)
+#	print('fcl:')
+#	print(fcl)
+#	print('gamma:')
+#	print(gamma)
+#	print('n:')
+#	print(n)
+	return domega+np.multiply(1.0/gamma,np.log10(1+np.power(np.divide(freqs,fcs),n*gamma)))-np.multiply(1.0/gamma,np.log10(1+np.power(np.divide(freqs,fcl),n*gamma)))
 
-def spec_global_errs(fc,freqsins,ratios,guess0s,gamma,n):
+def spec_global_errs(fc,freqsins,ratios,guess0s,gamma,n,loss='linear',debug=False,debugname=None,returnfit=False):
 	globalerr=0
+	if debug:
+		fig,ax=plt.subplots(nrows=1,ncols=1)
+	if returnfit:
+		fit_omega=[]
+		fit_fcs=[]
 	no_rats = len(ratios)
 	for ir,ratio in enumerate(ratios):
 		freqsin=freqsins[ir]
 		try:
-			res=opt.least_squares(lambda x: np.linalg.norm(specrat_fit(freqsin,x[0],x[1],fc,gamma,n)-np.log10(ratio)),[guess0s[ir],20], loss='soft_l1', bounds=([1,1],[1e5,np.inf]), max_nfev=1000)
+			res=opt.least_squares(lambda x: specrat_fit(freqsin,x[0],x[1],fc,gamma,n)-np.log10(ratio),[guess0s[ir],20], loss=loss, bounds=([1,1],[1e5,np.inf]), max_nfev=1000)
 			#popt,pcov=opt.curve_fit(lambda freqs, domega, fcs: specrat_fit(freqs, domega, fcs, fc,gamma,n), freqsin,np.log10(ratio))
 			popt=res['x']
-			guess=specrat_fit(freqsin,popt[0],popt[1], fc,gamma,n)
-			rnorm=np.linalg.norm(np.log10(ratio)-guess)
-			globalerr=globalerr+rnorm/np.sqrt(len(ratio))
+			rnorm=res['cost']
+			if debug:
+				ax.semilogx(freqsin,np.log10(ratio),basex=10,color='c')
+				bestfit=specrat_fit(freqsin,popt[0],popt[1],fc,gamma,n)
+				ax.semilogx(freqsin,bestfit,basex=10,color='m')	
+			if returnfit:
+				fit_omega.append(popt[0])
+				fit_fcs.append(popt[1])		
+	#		guess=specrat_fit(freqsin,popt[0],popt[1], fc,gamma,n)
+	#		rnorm=np.linalg.norm(np.log10(ratio)-guess)
+			globalerr=globalerr+rnorm
 		except:
 			logging.exception('values at exception: ')
-			rnorm=np.linalg.norm(np.log10(ratio)-brune(freqsin,2000,10,fc))
+			rnorm=np.linalg.norm(np.log10(ratio)-specrat_fit(freqsin,2000,10,fc,gamma,n))
 			globalerr=globalerr+rnorm/np.sqrt(len(ratio))
+	if debug:
+		plt.savefig(debugname)
+	if returnfit:
+		return globalerr/len(ratios), fit_omega, fit_fcs
 	return globalerr/len(ratios)	
 
 def corner(i,ratsin,freqsin,gridsearch):
@@ -193,9 +233,9 @@ def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=False)
 	"""
 	generate spectral ratios
 	"""
-	print(args.altC)
-	print(args.C)
 	ms_small=data_small[0]
+	ela=float(ms_small.split('_evla')[-1].split('_')[0])
+	elo=float(ms_small.split('_lo')[1].split('_')[0])
 	pick_small=data_small[1]
 	stla=float(ms_small.split('stla')[-1].split('_')[0])
 	stlo=float(ms_small.split('_lo')[-1].split('.ms')[0])
@@ -208,25 +248,19 @@ def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=False)
 	echannels=[tr.stats.channel for tr in edata]
 	mchannels=[tr.stats.channel for tr in mdata]
 	if not args.C in echannels and len(list(set(echannels)&set(args.altC))) == 0:
-		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,station,stla,stlo,args.C)
+		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,ela,elo,station,stla,stlo,args.C)
 		print('we didnt find this channel')
 		return empty_specrat
 	if not args.C in mchannels and len(list(set(mchannels)&set(args.altC))) == 0:
-		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,station,stla,stlo,args.C)
+		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,ela,elo,station,stla,stlo,args.C)
 		print('we didnt find this channel')
 		return empty_specrat
 	allchans=args.altC
 	allchans.append(args.C)
 	echannel=list(set(echannels)&set(allchans))[0]
 	mchannel=list(set(mchannels)&set(allchans))[0]
-	print(echannel)
-	print(mchannel)
 	edata=edata.select(channel=echannel)[0]
 	mdata=mdata.select(channel=mchannel)[0]
-	print('mdata:')
-	print(mdata)
-	print('edata')
-	print(edata)
 	freq1,spec1=spectrum_gen(mdata,pick_large,station,args,debug=debug)	
 	freq2,spec2=spectrum_gen(edata,pick_small,station,args,debug=debug) 
 	argsn=copy.deepcopy(args)
@@ -237,16 +271,17 @@ def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=False)
 #		ax[0].plot(mplottr.data)
 #		ax[1].plot(eplottr.data)
 	if len(freq1) < 1 or len(spec1)<1 or len(freq2)<1 or len(spec2)<1:
-		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,station,stla,stlo,args.C)
+		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,ela,elo,station,stla,stlo,args.C)
 		print('we were not able to generate spectrum')
 		return empty_specrat
 	if not len(spec1)==len(spec2) or not len(spec2)==len(specn):
-		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,station,stla,stlo,args.C)
+		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,ela,elo,station,stla,stlo,args.C)
 		print('length of spectra are not equal! check the picks')
 		return empty_specrat
 	try:
 		snr=np.divide(spec2,specn)
 		specratio=np.divide(spec1,spec2)
+		print('we divided the spectral ratio')
 	except:
 		print('freq1:')
 		print(freq1)
@@ -254,9 +289,9 @@ def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=False)
 		print(freq2)
 		print('freqn')
 		print(freqn)
-		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,station,stla,stlo,args.C)
+		empty_specrat=specrat(np.asarray([]),np.asarray([]), np.asarray([]),master_name,mla,mlo,egf_name,ela,elo,station,stla,stlo,args.C)
 		return empty_specrat
-	specratio=specrat(freq1,specratio,snr,master_name,mla,mlo,egf_name,station,stla,stlo,args.C)
+	specratio=specrat(freq1,specratio,snr,master_name,mla,mlo,egf_name,ela,elo,station,stla,stlo,args.C)
 	return specratio
 
 #deprecated function
