@@ -1,0 +1,5 @@
+data formats for corner and stress drop files
+['event name', event moment in N m, event corner in Hz, standard deviation]
+for radenergy files:
+data=np.load(file)
+data.keys() for arrays
