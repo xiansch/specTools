@@ -193,8 +193,8 @@ def plot(specratios,min_snr=0.0, min_xcorr=0.0, snrtype='Pcoda',freqmin=0.5, fre
 	fig=plt.figure(figsize=(10,7))
 	ax1=plt.subplot2grid((7,3),(0,0), rowspan=7)
 	ax2=plt.subplot2grid((7,3),(0,1)) #master event trace
-	ax3=plt.subplot2grid((7,3),(1,1), rowspan=4) #egf traces
-	ax7=plt.subplot2grid((7,3),(5,1), rowspan=2) #stfs.
+	ax3=plt.subplot2grid((7,3),(1,1), rowspan=6) #egf traces
+#	ax7=plt.subplot2grid((7,3),(5,1), rowspan=2) #stfs.
 	ax4=plt.subplot2grid((7,3),(0,2)) #master spectrum
 	ax5=plt.subplot2grid((7,3),(1,2), rowspan=3) #egf spectrum
 	ax6=plt.subplot2grid((7,3),(4,2), rowspan=3) #spetral ratios
@@ -237,7 +237,12 @@ def plot(specratios,min_snr=0.0, min_xcorr=0.0, snrtype='Pcoda',freqmin=0.5, fre
 	ax4.set_xticklabels([])
 	ax2.set_xticklabels([])
 	ax2.set_yticklabels([])
-	ax3.set_xticklabels([])
+	ax2.set_title('traces')
+	ax4.set_title('spectra')
+	ax6.set_xlabel('spec ratio vs. log frequency')
+#	ax6.set_ylabel('spectral ratio')
+#	ax3.set_xticklabels([])
+	ax3.set_xlabel('realigned time (s)')
 	ax3.set_yticklabels([])
 	plt.suptitle(specrats[0].master+' at ' + specrats[0].station)	
 	print('still loading maps')
@@ -258,7 +263,7 @@ def plot(specratios,min_snr=0.0, min_xcorr=0.0, snrtype='Pcoda',freqmin=0.5, fre
 		ela=specrat.ela
 		elo=specrat.elo
 		xcorr=np.max(specrat.xcorr)
-		stf_simple = deconvf(egftr, mastertr, mastertr.stats.sampling_rate) 
+#		stf_simple = deconvf(egftr, mastertr, mastertr.stats.sampling_rate) 
 		print('len stf is '  +str(len(stf)))
 		if xcorr > 0.5: 
 			colour='g'
@@ -276,12 +281,12 @@ def plot(specratios,min_snr=0.0, min_xcorr=0.0, snrtype='Pcoda',freqmin=0.5, fre
 		ax3.text(0,ie,'{:0.2f}'.format(coeff))
 		x2,y2=map1(elo,ela)
 		map1.scatter(x2,y2,marker='+',color=colour)
-		try:
-			if xcorr >0.5:
-				ax7.plot(stf, color=colour)
-				ax7.plot(stf_simple, color='m')
-		except:
-			logging.exception('values at exception ')
+	#	try:
+	#		if xcorr >0.2:
+	#			ax7.plot(stf, color=colour)
+#	#			ax7.plot(stf_simple, color='m')
+	#	except:
+	#		logging.exception('values at exception ')
 	ax3.set_xlim((tarray[0], tarray[-1]))
 	ax6.set_xlim((10**-1.2, 10**1.2))
 	ax4.set_xlim((10**-1.2, 10**1.2))
@@ -473,7 +478,7 @@ def xcorr(master, egf, prefilter=6.0):
 	correlation=correlate(m1,e1,m1.stats.npts/2)		
 	return correlation, m1, e1	
 	
-def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=0):
+def get_spec_ratio(data_small, mdata, data_large, station, args, debug=0):
 	"""
 	generate spectral ratios
 	preprocessing of Kiban network metadata.
@@ -491,21 +496,33 @@ def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=0):
 	nwins=args.N
 	nlogbins=args.lb
 	fftype=args.ft
+	edata=data_small[0]
 	#load data from small and large events
-	ms_small=data_small[0]
-	ela=float(ms_small.split('_evla')[-1].split('_')[0])
-	elo=float(ms_small.split('_lo')[1].split('_')[0])
-	edp=float(ms_small.split('_dp')[1].split('_')[0])
-	pick_small=data_small[1]
-	stla=float(ms_small.split('stla')[-1].split('_')[0])
-	stlo=float(ms_small.split('_lo')[-1].split('.ms')[0])
-	egf_name=ms_small.split('evt_')[-1].split('_evla')[0]
-	master_name=ms_large.split('evt_')[-1].split('_evla')[0]
-	mla=float(ms_large.split('_evla')[-1].split('_')[0])
-	mlo=float(ms_large.split('_lo')[1].split('_')[0])
-	mdp=float(ms_large.split('_dp')[1].split('_')[0])
-	edata=read(ms_small)
-	mdata=read(ms_large)
+#	ms_small=data_small[0]
+#	ela=float(ms_small.split('_evla')[-1].split('_')[0])
+#	elo=float(ms_small.split('_lo')[1].split('_')[0])
+#	edp=float(ms_small.split('_dp')[1].split('_')[0])
+#	pick_small=data_small[1]
+#	stla=float(ms_small.split('stla')[-1].split('_')[0])
+#	stlo=float(ms_small.split('_lo')[-1].split('.ms')[0])
+#	egf_name=ms_small.split('evt_')[-1].split('_evla')[0]
+#	master_name=ms_large.split('evt_')[-1].split('_evla')[0]
+#	mla=float(ms_large.split('_evla')[-1].split('_')[0])
+#	mlo=float(ms_large.split('_lo')[1].split('_')[0])
+#	mdp=float(ms_large.split('_dp')[1].split('_')[0])
+#	edata=read(ms_small)
+#	mdata=read(ms_large)
+	ela=data_small[1].la
+	elo=data_small[1].lo
+	edp=data_small[1].dp
+	pick_small=data_small[1].pick
+	stla=data_small[1].stla
+	stlo=data_small[1].stlo
+	egf_name=data_small[1].name
+	master_name=data_large.name
+	mla=data_large.la
+	mlo=data_large.lo
+	mdp=data_large.dp
 	#select the channel for the data
 	#use alternate names for channels from different sources
 	echannels=[tr.stats.channel for tr in edata]
@@ -534,12 +551,13 @@ def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=0):
 		edata.filter(type='bandpass', freqmin=prefilter[0], freqmax=prefilter[1])
 		mdata.filter(type='bandpass', freqmin=prefilter[0], freqmax=prefilter[1])
 	#find the correct picks based on phase desired
-	pick_large=str(pick_large)
-	pick_small=read_events(pick_small)
-	pick_small=pick_small[0].picks
-	pick_large = read_events(pick_large)
-	pick_large = pick_large[0].picks
-	print(station)
+#	pick_large=str(pick_large)
+	pick_large=data_large.pick
+#	pick_small=read_events(pick_small)
+#	pick_small=pick_small[0].picks
+#	pick_large = read_events(pick_large)
+#	pick_large = pick_large[0].picks
+#	print(station)
 	spick_large = [ipick for ipick in pick_large if ipick.phase_hint == 'S' and ipick.waveform_id.station_code[-4:]==station[-4:]]
 	spick_small = [ipick for ipick in pick_small if ipick.phase_hint == 'S' and ipick.waveform_id.station_code[-4:]==station[-4:]]
 	ppick_large = [ipick for ipick in pick_large if ipick.phase_hint == 'P' and ipick.waveform_id.station_code[-4:]==station[-4:]]
@@ -558,14 +576,14 @@ def get_spec_ratio(data_small, ms_large, pick_large, station, args, debug=0):
 	print(pick_small[0].waveform_id.station_code)
 	pick_large=pick_large[0].time
 	pick_small=pick_small[0].time
-	print('pick large time: ')
-	print(pick_large)
-	print(mdata.stats.starttime)
-	print(mdata.stats.endtime)
-	print('pick smal time')
-	print(pick_small)
-	print(edata.stats.starttime)
-	print(edata.stats.endtime)
+#	print('pick large time: ')
+#	print(pick_large)
+#	print(mdata.stats.starttime)
+#	print(mdata.stats.endtime)
+#	print('pick smal time')
+#	print(pick_small)
+#	print(edata.stats.starttime)
+#	print(edata.stats.endtime)
 	try:
 		if stype == 'coda' or stype == 'S' or stype == 'lateS':
 			dt, coeff=xcorr_pick_correction(pick_large, mdata, pick_small, edata, t_before=0.25, t_after=1.0, cc_maxlag=1.5, filter="bandpass", filter_options={'freqmin': 0.5, 'freqmax': 5.0})
